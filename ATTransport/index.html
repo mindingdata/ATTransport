@@ -1,0 +1,112 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title></title>
+    <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-beta1/jquery.min.js"></script>
+    <script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+    <script src="animatedmarker.js"></script>
+
+    <style>
+        html, body {
+            height:100%;
+			width:100%;
+        }
+
+         #map
+         {
+             width:100%;
+             height:90%;
+         }
+    </style>
+
+</head>
+<body>
+    <div id="map"></div>
+    Current Time : <span id="timer"></span>AM
+
+    <script type="text/javascript">
+
+        var trips = [];
+        var currentTime = new Date();
+        currentTime.setUTCHours(5, 00, 00);
+        var activeBusses = 0;
+        var startedTrips = [];
+        var completedTrips = 0;
+
+        var minuteInterval = 250; //How long a minute takes in the simulation in milliseconds. 
+
+        var map = L.map('map').setView([-36.8591, 174.8458], 15);
+        // create the tile layer with correct attribution
+        var osmUrl = 'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        var osmAttrib = 'Map data © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors';
+        var osm = new L.TileLayer(osmUrl, { minZoom: 8, maxZoom: 15, attribution: osmAttrib });
+
+        map.addLayer(osm);
+
+
+        $.getJSON("stops.json", function (json) {
+            trips = json;
+            startBusses();
+        });
+
+        //Looks through our trips list and starts any bus that needs to get going in the current minute. 
+        function startBusses()
+        {
+            if (completedTrips == trips.length) {
+                return;
+            }
+
+            currentTime = new Date(currentTime.getTime() + 60000);
+
+            var currentTimeInSeconds = currentTime.getUTCHours() * 60 * 60 + currentTime.getUTCMinutes() * 60;
+
+            for (var i = 0; i < trips.length; i++) {
+                var trip = trips[i];
+
+                if (startedTrips[trip.TripId] != undefined)
+                    continue;
+
+                //Only start the bus if it's start time is equal to or less than the current time. 
+                if (trip.StartTime > currentTimeInSeconds)
+                    continue;
+
+                var latlngArray = [];
+
+                for (var j = 0; j < trip.LatLngs.length; j++) {
+                    latlngArray.push([trip.LatLngs[j].Lat, trip.LatLngs[j].Lng])
+                }
+
+                var line = L.polyline(latlngArray);
+
+                animatedMarker = L.animatedMarker(line.getLatLngs(),
+                    {
+                        onEnd: function () {
+                            map.removeLayer(this);
+                            activeBusses--;
+                            completedTrips++;
+                        },
+                        distance: trip.TotalDistanceTraveled,  // meters
+                        interval: trip.TotalTimeTaken / 1000 / 60 * minuteInterval, 
+                    });
+                map.addLayer(animatedMarker);
+                activeBusses++;
+                startedTrips[trip.TripId] = true;
+            }
+
+            var minutes = currentTime.getUTCMinutes();
+            if (minutes < 10)
+                minutes = "0" + currentTime.getUTCMinutes().toString();
+            $('#timer').text(currentTime.getUTCHours().toString() + " : " + minutes );
+
+            setTimeout(function () {
+                startBusses();
+            }, minuteInterval);
+        }
+
+    </script>
+
+</body>
+</html>
